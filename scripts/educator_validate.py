@@ -30,6 +30,14 @@ REPO = Path(__file__).resolve().parent.parent
 BACKUP = REPO / ".educator_backup"
 SOLUTION = REPO / "solution"
 
+# Load .env into os.environ so every subprocess we spawn inherits
+# RASA_PRO_LICENSE, NEBIUS_KEY, SPEECHMATICS_KEY, etc. Without this
+# the harness's scenarios see the shell env but not the file.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _dotenv import load_dotenv_into_environ  # noqa: E402
+
+load_dotenv_into_environ(REPO / ".env")
+
 
 def _cache_dir() -> Path:
     """XDG-standard cache path for educator logs. Used by diagnostics."""

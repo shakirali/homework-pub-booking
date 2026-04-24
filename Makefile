@@ -80,6 +80,21 @@ check-submit: ## Run the local grader (advisory — CI at deadline is the author
 
 # ─── per-exercise targets ───────────────────────────────────────────────
 
+# ─── narration ────────────────────────────────────────────────────────
+
+.PHONY: narrate
+narrate: ## Narrate a session by id: make narrate SESSION=sess_abc123
+	@if [ -z "$(SESSION)" ]; then \
+	  echo "Usage: make narrate SESSION=<session-id>"; \
+	  echo "Tip:   make narrate-latest   # narrate the most recent session"; \
+	  exit 2; \
+	fi
+	@$(UV) run python scripts/narrator.py --session $(SESSION)
+
+.PHONY: narrate-latest
+narrate-latest: ## Narrate the most recent session — useful right after `make ex5-real`
+	@$(UV) run python scripts/narrator.py --latest
+
 .PHONY: ex5
 ex5: ## Run Ex5 (Edinburgh research) in offline FakeLLMClient mode
 	@$(UV) run python -m starter.edinburgh_research.run
@@ -204,9 +219,10 @@ educator-diagnostics-quick: ## [EDUCATOR] Diagnostics without network probes (fa
 	@$(UV) run python scripts/educator_diagnostics.py --quick
 
 .PHONY: educator-backup
-educator-backup: ## [EDUCATOR] Snapshot starter/ and answers/ to .educator_backup/
+educator-backup: ## [EDUCATOR] Snapshot starter/, answers/, and rasa_project/ to .educator_backup/
 	@rm -rf .educator_backup
 	@mkdir .educator_backup
 	@cp -r starter .educator_backup/starter
 	@cp -r answers .educator_backup/answers
-	@echo "✓ starter/ and answers/ snapshotted to .educator_backup/"
+	@if [ -d rasa_project ]; then cp -r rasa_project .educator_backup/rasa_project; fi
+	@echo "✓ starter/, answers/, rasa_project/ snapshotted to .educator_backup/"
