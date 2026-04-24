@@ -334,7 +334,7 @@ def _main_impl() -> int:
         if real:
             scenarios = [
                 ("ex5 (real Nebius)", "starter.edinburgh_research.run", ["--real"]),
-                ("ex6 (real Rasa Docker)", "starter.rasa_half.run", ["--real"]),
+                ("ex6 (real Rasa)", "starter.rasa_half.run", ["--real"]),
                 ("ex7 (real Nebius)", "starter.handoff_bridge.run", ["--real"]),
             ]
         else:

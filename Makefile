@@ -305,7 +305,7 @@ educator-validate-real: ## [EDUCATOR] Like educator-validate but runs every -rea
 	@echo ""
 	@echo "⚠  This runs EVERY scenario against LIVE services:"
 	@echo "   - Ex5/Ex7: Nebius API (~\$$0.05 each)"
-	@echo "   - Ex6:     Rasa Pro container via Docker (needs RASA_PRO_LICENSE + 60-90s)"
+	@echo "   - Ex6:     Rasa Pro (host-process, needs RASA_PRO_LICENSE + 60-90s first-train)"
 	@echo "   - Ex8:     Nebius Llama-3.3 for the manager persona (~\$$0.02)"
 	@echo "   Total: roughly \$$0.20 and ~3 minutes on first run."
 	@echo ""
