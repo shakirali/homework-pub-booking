@@ -192,8 +192,19 @@ def calculate_cost(
 
     with _CATERING_FILE.open("r", encoding="utf-8") as f:
         catering = json.load(f)
-        base_per_head = catering["base_rates_gbp_per_head"][catering_tier]
-        venue_mult = catering["venue_modifiers"][venue_id]
+        base_rates = catering["base_rates_gbp_per_head"]
+        venue_modifiers = catering["venue_modifiers"]
+        if catering_tier not in base_rates:
+            error = ToolError(
+                code="SA_TOOL_INVALID_INPUT", message=f"{catering_tier} does not exist"
+            )
+            return ToolResult(success=False, output={}, summary="", error=error)
+        if venue_id not in venue_modifiers:
+            error = ToolError(code="SA_TOOL_INVALID_INPUT", message=f"{venue_id} does not exist")
+            return ToolResult(success=False, output={}, summary="", error=error)
+
+        base_per_head = base_rates[catering_tier]
+        venue_mult = venue_modifiers[venue_id]
         subtotal_gbp = base_per_head * venue_mult * party_size * max(1, duration_hours)
         service_gbp = subtotal_gbp * catering["service_charge_percent"] / 100
         total_gbp = (
@@ -211,6 +222,9 @@ def calculate_cost(
         else:
             deposit_required_gbp = int(total_gbp * 0.30)
 
+    total_gbp_int = int(total_gbp)
+    deposit_required_gbp_int = int(deposit_required_gbp)
+
     output = {
         "venue_id": venue_id,
         "party_size": party_size,
@@ -218,8 +232,8 @@ def calculate_cost(
         "catering_tier": catering_tier,
         "subtotal_gbp": int(subtotal_gbp),
         "service_gbp": int(service_gbp),
-        "total_gbp": int(total_gbp),
-        "deposit_required_gbp": int(deposit_required_gbp),
+        "total_gbp": total_gbp_int,
+        "deposit_required_gbp": deposit_required_gbp_int,
     }
 
     arguments = {
@@ -229,7 +243,7 @@ def calculate_cost(
         "catering_tier": catering_tier,
     }
     record_tool_call(tool_name="calculate_cost", arguments=arguments, output=output)
-    summary = f"calculate_cost({venue_id}, {party_size}): total £{total_gbp}, deposit £{deposit_required_gbp}"
+    summary = f"calculate_cost({venue_id}, {party_size}): total £{total_gbp_int}, deposit £{deposit_required_gbp_int}"
 
     return ToolResult(success=True, output=output, summary=summary)
 
@@ -259,7 +273,32 @@ def generate_flyer(session: Session, event_details: dict) -> ToolResult:
     IMPORTANT: this tool MUST be registered with parallel_safe=False
     because it writes a file.
     """
-    raise NotImplementedError("TODO 4: implement generate_flyer")
+    html_path = session.workspace_dir / "flyer.html"
+    html_path.parent.mkdir(parents=True, exist_ok=True)
+    html = f"""<!DOCTYPE html>
+    <html>
+    <head><title>Booking — {event_details['venue_name']}</title></head>
+    <body>
+    <p>Event Details</p>
+    <h1 data-testid="venue_name">{event_details['venue_name']}</h1>
+    <p data-testid="date">{event_details['date']}</p>
+    <p data-testid="time">{event_details['time']}</p>
+    <p data-testid="party_size">{event_details['party_size']}</p>
+    <p data-testid="condition">{event_details['condition']}</p>
+    <p data-testid="temperature_c">{event_details['temperature_c']}C</p>
+    <p data-testid="total_gbp">£{event_details['total_gbp']}</p>
+    <p data-testid="deposit_required_gbp">£{event_details['deposit_required_gbp']}</p>
+    </body>
+    </html>
+    """
+    bytes_written = html_path.write_text(html, encoding="utf-8")
+    output = {
+        "path": "workspace/flyer.html",
+        "bytes_written": bytes_written,
+    }
+    summary = f"generate_flyer: wrote workspace/flyer.html ({bytes_written} chars)"
+    record_tool_call(tool_name="generate_flyer", arguments=event_details, output=output)
+    return ToolResult(success=True, output=output, summary=summary)
 
 
 # ---------------------------------------------------------------------------
