@@ -14,12 +14,18 @@ The grader checks for:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from sovereign_agent.session.directory import Session
-from sovereign_agent.tools.registry import ToolRegistry, ToolResult, _RegisteredTool
+from sovereign_agent.tools.registry import ToolError, ToolRegistry, ToolResult, _RegisteredTool
+
+from starter.edinburgh_research.integrity import record_tool_call
 
 _SAMPLE_DATA = Path(__file__).parent / "sample_data"
+_VENUE_FILE = _SAMPLE_DATA / "venues.json"
+_WEATHER_FILE = _SAMPLE_DATA / "weather.json"
+_CATERING_FILE = _SAMPLE_DATA / "catering.json"
 
 
 # ---------------------------------------------------------------------------
@@ -43,7 +49,46 @@ def venue_search(near: str, party_size: int, budget_max_gbp: int = 1000) -> Tool
     """
     # TODO 1a: load venues.json. Raise ToolError(SA_TOOL_DEPENDENCY_MISSING)
     #          if the file is absent.
-    raise NotImplementedError("TODO 1: implement venue_search")
+    if not _VENUE_FILE.exists():
+        raise ToolError(code="SA_TOOL_DEPENDENCY_MISSING", message="venue does not exist")
+
+    with _VENUE_FILE.open("r", encoding="utf-8") as f:
+        results = []
+        venues = json.load(f)
+        for venue in venues:
+            if (
+                venue["open_now"]
+                and near.lower() in venue["area"].lower()
+                and venue["seats_available_evening"] >= party_size
+                and venue["hire_fee_gbp"] + venue["min_spend_gbp"] <= budget_max_gbp
+            ):
+                results.append(venue)
+    output = {
+        "near": near,
+        "party_size": party_size,
+        "results": results,
+        "count": len(results),
+    }
+
+    summary = f"venue_search({near}, party={party_size}): {len(results)} result(s)"
+
+    arguments = {
+        "near": near,
+        "party_size": party_size,
+        "budget_max_gbp": budget_max_gbp,
+    }
+
+    record_tool_call(
+        tool_name="venue_search",
+        arguments=arguments,
+        output=output,
+    )
+
+    return ToolResult(
+        success=True,
+        output=output,
+        summary=summary,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -61,7 +106,40 @@ def get_weather(city: str, date: str) -> ToolResult:
 
     MUST call record_tool_call(...) before returning.
     """
-    raise NotImplementedError("TODO 2: implement get_weather")
+    if not _WEATHER_FILE.exists():
+        raise ToolError(code="SA_TOOL_DEPENDENCY_MISSING", message="weather data does not exist")
+    with _WEATHER_FILE.open("r", encoding="utf-8") as f:
+        weather_data = json.load(f)
+        city_key = city.lower()
+        if city_key not in weather_data:
+            error = ToolError(
+                code="SA_TOOL_INVALID_INPUT",
+                message=f"city '{city}' not found in weather data",
+            )
+            return ToolResult(success=False, output={}, summary="", error=error)
+        city_weather = weather_data[city_key]
+        if date not in city_weather:
+            error = ToolError(
+                code="SA_TOOL_INVALID_INPUT",
+                message=f"weather data for city '{city}' does not exist for date '{date}'",
+            )
+            return ToolResult(success=False, output={}, summary="", error=error)
+        entry = city_weather[date]
+        output = {
+            "city": city,
+            "date": date,
+            "condition": entry["condition"],
+            "temperature_c": entry["temperature_c"],
+            "precip_mm": entry["precip_mm"],
+            "wind_kph": entry["wind_kph"],
+        }
+        summary = f"get_weather({city}, {date}): {entry['condition']}, {entry['temperature_c']}C"
+        record_tool_call(
+            tool_name="get_weather",
+            arguments={"city": city, "date": date},
+            output=output,
+        )
+        return ToolResult(success=True, output=output, summary=summary)
 
 
 # ---------------------------------------------------------------------------
@@ -98,7 +176,62 @@ def calculate_cost(
 
     MUST call record_tool_call(...) before returning.
     """
-    raise NotImplementedError("TODO 3: implement calculate_cost")
+    if not _VENUE_FILE.exists() or not _CATERING_FILE.exists():
+        raise ToolError(
+            code="SA_TOOL_DEPENDENCY_MISSING", message="venue or catering data does not exist"
+        )
+
+    with _VENUE_FILE.open("r", encoding="utf-8") as f:
+        venues = json.load(f)
+        venues_by_id = {venue["id"]: venue for venue in venues}
+        if venue_id not in venues_by_id:
+            error = ToolError(code="SA_TOOL_INVALID_INPUT", message="venue does not exist")
+            return ToolResult(success=False, output={}, summary="", error=error)
+
+        selected_venue = venues_by_id[venue_id]
+
+    with _CATERING_FILE.open("r", encoding="utf-8") as f:
+        catering = json.load(f)
+        base_per_head = catering["base_rates_gbp_per_head"][catering_tier]
+        venue_mult = catering["venue_modifiers"][venue_id]
+        subtotal_gbp = base_per_head * venue_mult * party_size * max(1, duration_hours)
+        service_gbp = subtotal_gbp * catering["service_charge_percent"] / 100
+        total_gbp = (
+            subtotal_gbp
+            + service_gbp
+            + selected_venue["hire_fee_gbp"]
+            + selected_venue["min_spend_gbp"]
+        )
+        deposit_required_gbp = 0
+
+        if total_gbp < 300:
+            deposit_required_gbp = 0
+        elif total_gbp <= 1000:
+            deposit_required_gbp = int(total_gbp * 0.20)
+        else:
+            deposit_required_gbp = int(total_gbp * 0.30)
+
+    output = {
+        "venue_id": venue_id,
+        "party_size": party_size,
+        "duration_hours": duration_hours,
+        "catering_tier": catering_tier,
+        "subtotal_gbp": int(subtotal_gbp),
+        "service_gbp": int(service_gbp),
+        "total_gbp": int(total_gbp),
+        "deposit_required_gbp": int(deposit_required_gbp),
+    }
+
+    arguments = {
+        "venue_id": venue_id,
+        "party_size": party_size,
+        "duration_hours": duration_hours,
+        "catering_tier": catering_tier,
+    }
+    record_tool_call(tool_name="calculate_cost", arguments=arguments, output=output)
+    summary = f"calculate_cost({venue_id}, {party_size}): total £{total_gbp}, deposit £{deposit_required_gbp}"
+
+    return ToolResult(success=True, output=output, summary=summary)
 
 
 # ---------------------------------------------------------------------------
