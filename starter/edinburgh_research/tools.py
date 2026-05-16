@@ -20,7 +20,7 @@ from pathlib import Path
 from sovereign_agent.session.directory import Session
 from sovereign_agent.tools.registry import ToolError, ToolRegistry, ToolResult, _RegisteredTool
 
-from starter.edinburgh_research.integrity import record_tool_call
+from starter.edinburgh_research.integrity import _TOOL_CALL_LOG, record_tool_call
 
 _SAMPLE_DATA = Path(__file__).parent / "sample_data"
 _VENUE_FILE = _SAMPLE_DATA / "venues.json"
@@ -47,8 +47,14 @@ def venue_search(near: str, party_size: int, budget_max_gbp: int = 1000) -> Tool
     MUST call record_tool_call(...) before returning so the integrity
     check can see what data was produced.
     """
-    # TODO 1a: load venues.json. Raise ToolError(SA_TOOL_DEPENDENCY_MISSING)
-    #          if the file is absent.
+    search_count = sum(1 for r in _TOOL_CALL_LOG if r.tool_name == "venue_search")
+    if search_count >= 3:
+        return ToolResult(
+            success=False,
+            output={"error": "too_many_searches", "count": search_count},
+            summary="STOP calling venue_search; use the results you already have.",
+        )
+
     if not _VENUE_FILE.exists():
         raise ToolError(code="SA_TOOL_DEPENDENCY_MISSING", message="venue does not exist")
 
@@ -277,17 +283,17 @@ def generate_flyer(session: Session, event_details: dict) -> ToolResult:
     html_path.parent.mkdir(parents=True, exist_ok=True)
     html = f"""<!DOCTYPE html>
     <html>
-    <head><title>Booking — {event_details['venue_name']}</title></head>
+    <head><title>Booking — {event_details["venue_name"]}</title></head>
     <body>
     <p>Event Details</p>
-    <h1 data-testid="venue_name">{event_details['venue_name']}</h1>
-    <p data-testid="date">{event_details['date']}</p>
-    <p data-testid="time">{event_details['time']}</p>
-    <p data-testid="party_size">{event_details['party_size']}</p>
-    <p data-testid="condition">{event_details['condition']}</p>
-    <p data-testid="temperature_c">{event_details['temperature_c']}C</p>
-    <p data-testid="total_gbp">£{event_details['total_gbp']}</p>
-    <p data-testid="deposit_required_gbp">£{event_details['deposit_required_gbp']}</p>
+    <h1 data-testid="venue_name">{event_details["venue_name"]}</h1>
+    <p data-testid="date">{event_details["date"]}</p>
+    <p data-testid="time">{event_details["time"]}</p>
+    <p data-testid="party_size">{event_details["party_size"]}</p>
+    <p data-testid="condition">{event_details["condition"]}</p>
+    <p data-testid="temperature_c">{event_details["temperature_c"]}C</p>
+    <p data-testid="total_gbp">£{event_details["total_gbp"]}</p>
+    <p data-testid="deposit_required_gbp">£{event_details["deposit_required_gbp"]}</p>
     </body>
     </html>
     """
